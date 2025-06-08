@@ -88,6 +88,15 @@
         .login-history-panel li:last-child {
             border-bottom: none;
         }
+
+        /* Custom alert/confirmation modal styles */
+        #customAlertModal, #customConfirmModal {
+            z-index: 1001; /* Higher than login/register modals */
+        }
+        #customAlertModal .modal-content, #customConfirmModal .modal-content {
+            width: 350px;
+            padding: 1.5rem;
+        }
     </style>
 </head>
 <body class="flex flex-col min-h-screen">
@@ -376,51 +385,54 @@
         </div>
     </div>
 
+    <!-- Custom Alert Modal (Replaces alert()) -->
+    <div id="customAlertModal" class="modal-overlay">
+        <div class="modal-content text-center">
+            <h3 id="alertTitle" class="text-xl font-bold mb-4 text-gray-800">Alert</h3>
+            <p id="alertMessage" class="text-gray-700 mb-6"></p>
+            <button id="closeAlertDialogBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300">
+                OK
+            </button>
+        </div>
+    </div>
+
+    <!-- Custom Confirm Modal (Replaces confirm()) -->
+    <div id="customConfirmModal" class="modal-overlay">
+        <div class="modal-content text-center">
+            <h3 id="confirmTitle" class="text-xl font-bold mb-4 text-gray-800">Confirm Action</h3>
+            <p id="confirmMessage" class="text-gray-700 mb-6"></p>
+            <div class="flex justify-center space-x-4">
+                <button id="confirmYesBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition duration-300">
+                    Yes
+                </button>
+                <button id="confirmNoBtn" class="bg-gray-400 hover:bg-gray-500 text-white font-bold py-2 px-6 rounded-lg transition duration-300">
+                    No
+                </button>
+            </div>
+        </div>
+    </div>
+
+
     <div id="authStatusMessage" class="fixed bottom-4 right-4 p-3 bg-gray-700 text-white text-sm rounded-lg shadow-lg z-[1002]">
         Initializing authentication...
     </div>
 
-
-    
-
-
-
-<script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyBFKQa1_X2K3fSp1o0Co5uy9neWK9GGceQ",
-    authDomain: "mobile-doctor-app.firebaseapp.com",
-    projectId: "mobile-doctor-app",
-    storageBucket: "mobile-doctor-app.firebasestorage.app",
-    messagingSenderId: "831443700901",
-    appId: "1:831443700901:web:5848c1e848e4503b28514c"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-</script>
-
-
-
-
-
-
-
-
-
-
-
+    <script type="module">
+        // Firebase configuration (default, will be overridden by Canvas globals if available)
+        const customFirebaseConfig = {
+            apiKey: "AIzaSyBFKQa1_X2K3fSp1o0Co5uy9neWK9GGceQ",
+            authDomain: "mobile-doctor-app.firebaseapp.com",
+            projectId: "mobile-doctor-app",
+            storageBucket: "mobile-doctor-app.firebasestorage.app",
+            messagingSenderId: "831443700901",
+            appId: "1:831443700901:web:5848c1e848e4503b28514c"
+        };
 
         // Determine which Firebase config to use: Canvas-provided or custom
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : customFirebaseConfig;
 
         // Determine which appId to use: Canvas-provided or from custom config
-        const appId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
+        const currentAppId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
 
@@ -430,12 +442,62 @@
         let userId; // The Firebase user ID (uid) from Firebase Auth
         let isAuthReady = false; // Flag to indicate if Firebase auth state is resolved
 
+        // Firebase modules (will be loaded dynamically)
+        let getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut;
+        let getFirestore, doc, setDoc, getDoc, updateDoc, collection, query, onSnapshot, addDoc, getDocs, deleteDoc, Timestamp;
+
+
         // --- Utility Functions ---
 
         // Helper to generate a unique ID for products and categories
         const generateUniqueId = () => '_' + Math.random().toString(36).substr(2, 9);
 
+        // Custom Alert and Confirm Dialogs (replacing native alert/confirm)
+        const customAlertModal = document.getElementById('customAlertModal');
+        const alertMessage = document.getElementById('alertMessage');
+        const alertTitle = document.getElementById('alertTitle');
+        const closeAlertDialogBtn = document.getElementById('closeAlertDialogBtn');
+
+        const customConfirmModal = document.getElementById('customConfirmModal');
+        const confirmMessage = document.getElementById('confirmMessage');
+        const confirmTitle = document.getElementById('confirmTitle');
+        const confirmYesBtn = document.getElementById('confirmYesBtn');
+        const confirmNoBtn = document.getElementById('confirmNoBtn');
+
+        let confirmResolve; // To store the resolve function for the Promise
+
+        const showAlert = (message, title = 'Alert') => {
+            alertTitle.textContent = title;
+            alertMessage.textContent = message;
+            customAlertModal.classList.add('open');
+        };
+
+        const showConfirm = (message, title = 'Confirm Action') => {
+            return new Promise(resolve => {
+                confirmTitle.textContent = title;
+                confirmMessage.textContent = message;
+                customConfirmModal.classList.add('open');
+                confirmResolve = resolve;
+            });
+        };
+
+        closeAlertDialogBtn.addEventListener('click', () => {
+            customAlertModal.classList.remove('open');
+        });
+
+        confirmYesBtn.addEventListener('click', () => {
+            customConfirmModal.classList.remove('open');
+            if (confirmResolve) confirmResolve(true);
+        });
+
+        confirmNoBtn.addEventListener('click', () => {
+            customConfirmModal.classList.remove('open');
+            if (confirmResolve) confirmResolve(false);
+        });
+
+
         // --- Initial Product Data (for demonstration if Firestore is empty) ---
+        // NOTE: Timestamp will be from Firebase's Timestamp object once imported
         const initialProductsData = [
             {
                 id: generateUniqueId(),
@@ -446,7 +508,7 @@
                 category: "Tools",
                 brand: "Relife",
                 partType: "Tools",
-                createdAt: Timestamp.now()
+                // createdAt: Timestamp.now() // Will be set when added to Firestore
             },
             {
                 id: generateUniqueId(),
@@ -457,7 +519,7 @@
                 category: "Laptop",
                 brand: "Dell",
                 partType: "Laptop Battery",
-                createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 5) // 5 days ago
+                // createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 5)
             },
             {
                 id: generateUniqueId(),
@@ -468,7 +530,7 @@
                 category: "Tools",
                 brand: "Unknown",
                 partType: "Tools",
-                createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 2) // 2 days ago
+                // createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 2)
             },
             {
                 id: generateUniqueId(),
@@ -476,10 +538,10 @@
                 description: "Professional repair service for damaged HDMI ports on gaming consoles. Fast turnaround.",
                 price: 120.00,
                 imageUrl: "https://placehold.co/400x300/F0F0F0/000000?text=HDMI+Repair",
-                category: "Tools", // Or "Repair Services" if you want to add that category
+                category: "Tools",
                 brand: "Playstation",
                 partType: "Tools",
-                createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 10) // 10 days ago
+                // createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 10)
             },
             {
                 id: generateUniqueId(),
@@ -490,7 +552,7 @@
                 category: "Tablet",
                 brand: "Samsung",
                 partType: "Tablet Touch",
-                createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 7) // 7 days ago
+                // createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 7)
             },
             {
                 id: generateUniqueId(),
@@ -501,7 +563,7 @@
                 category: "Tools",
                 brand: "Western Digital",
                 partType: "Tools",
-                createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 1) // 1 day ago
+                // createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 1)
             },
             {
                 id: generateUniqueId(),
@@ -512,7 +574,7 @@
                 category: "Smart Watch",
                 brand: "Apple",
                 partType: "Watch Folder",
-                createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 3) // 3 days ago
+                // createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 3)
             },
             {
                 id: generateUniqueId(),
@@ -523,12 +585,11 @@
                 category: "Tools",
                 brand: "ESD Tools",
                 partType: "Tools",
-                createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 6) // 6 days ago
+                // createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 6)
             }
         ];
 
         // Initial Categories Data (for demonstration if Firestore is empty)
-        // User provided category filters, mapping to broad categories
         const initialCategoriesData = [
             { id: generateUniqueId(), name: "Laptop" },
             { id: generateUniqueId(), name: "Mobile" },
@@ -634,6 +695,10 @@
         const cancelRegisterBtn = document.getElementById('cancelRegisterBtn');
         const closeRegisterModalBtn = document.getElementById('closeRegisterModal');
 
+        // Password Strength Checker elements (already in HTML but using a dynamic `small` tag)
+        // No direct DOM element needed here, handled by event listener
+
+
         // --- Application State ---
         let products = []; // Array to store all products from Firestore
         let categories = []; // Array to store all categories from Firestore
@@ -707,9 +772,10 @@
 
         // --- UI Update Functions ---
         const updateUIForAuth = () => {
+            // Enable/disable login buttons only after auth state is determined
             loginLogoutBtn.disabled = !isAuthReady;
             showRegisterBtn.disabled = !isAuthReady;
-            googleSignInBtn.disabled = !isAuthReady; // Enable Google Sign-In button too
+            googleSignInBtn.disabled = !isAuthReady;
 
             if (appUser) {
                 loginLogoutBtn.textContent = `Logout (${appUser.username})`;
@@ -718,25 +784,29 @@
                 } else {
                     toggleAdminPanelBtn.classList.add('hidden');
                 }
-                // Show login history panel if user is logged in
                 loginHistoryPanel.classList.remove('hidden');
                 renderLoginTimestamps(appUser.loginTimestamps || []);
             } else {
                 loginLogoutBtn.textContent = 'Login/Logout';
                 toggleAdminPanelBtn.classList.add('hidden');
-                loginHistoryPanel.classList.add('hidden'); // Hide on logout
+                loginHistoryPanel.classList.add('hidden');
                 if (currentView === 'admin') {
-                    showSection(storeView);
-                    filterAndSortProducts(); // Refresh products on logout
+                    showSection(storeView); // Redirect to store if admin logs out
+                    filterAndSortProducts();
                     currentView = 'store';
                 }
             }
+
+            // Update authentication status message
             if (isAuthReady) {
                 authStatusMessage.textContent = appUser ? `Authenticated as ${appUser.username} (Firebase UID: ${userId})` : 'Ready. Please login or register.';
                 authStatusMessage.classList.add('bg-green-500');
                 authStatusMessage.classList.remove('bg-gray-700', 'bg-red-500');
+                // Hide message after a delay, but keep it if there's an error
                 setTimeout(() => {
-                    authStatusMessage.style.display = 'none';
+                    if (!authStatusMessage.classList.contains('bg-red-500')) {
+                        authStatusMessage.style.display = 'none';
+                    }
                 }, 3000);
             } else {
                 authStatusMessage.textContent = 'Initializing authentication...';
@@ -773,6 +843,7 @@
             // 2. Apply Category Filter
             if (currentCategoryFilter !== 'all') {
                 if (currentCategoryFilter === 'latest') {
+                    // Ensure Timestamp objects are correctly handled for sorting
                     filteredProducts.sort((a, b) => (b.createdAt?.toDate()?.getTime() || 0) - (a.createdAt?.toDate()?.getTime() || 0));
                 } else if (currentCategoryFilter === 'oldest') {
                     filteredProducts.sort((a, b) => (a.createdAt?.toDate()?.getTime() || 0) - (b.createdAt?.toDate()?.getTime() || 0));
@@ -989,11 +1060,12 @@
         };
 
 
-        // --- Firebase Firestore Operations ---
+        // --- Firebase Firestore Operations (These functions now assume db and Timestamp are available) ---
 
         // Fetch products with real-time updates
         const setupProductsListener = () => {
-            const q = query(collection(db, "products"));
+            if (!db) { console.error("Firestore not initialized for products listener."); return; }
+            const q = query(collection(db, `artifacts/${currentAppId}/public/data/products`));
             onSnapshot(q, (snapshot) => {
                 products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 filterAndSortProducts();
@@ -1003,164 +1075,142 @@
                 renderCart(); // Update cart display in case product info changed
             }, (error) => {
                 console.error("Error fetching products:", error);
-                authStatusMessage.textContent = 'Error fetching products. Check console.';
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert('Error fetching products. Check console.', 'Data Error');
             });
         };
 
         // Fetch categories with real-time updates
         const setupCategoriesListener = () => {
-            const q = query(collection(db, "categories"));
+            if (!db) { console.error("Firestore not initialized for categories listener."); return; }
+            const q = query(collection(db, `artifacts/${currentAppId}/public/data/categories`));
             onSnapshot(q, (snapshot) => {
                 categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 renderAdminCategories(); // Re-render admin categories and update select dropdowns
                 filterAndSortProducts(); // Re-filter products if categories changed
             }, (error) => {
                 console.error("Error fetching categories:", error);
-                authStatusMessage.textContent = 'Error fetching categories. Check console.';
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert('Error fetching categories. Check console.', 'Data Error');
             });
         };
 
 
         const getProducts = async () => {
+            if (!db) { console.error("Firestore not initialized for getProducts."); return; }
             try {
-                const productsCol = collection(db, 'products');
+                const productsCol = collection(db, `artifacts/${currentAppId}/public/data/products`);
                 const productSnapshot = await getDocs(productsCol);
                 if (productSnapshot.empty) {
                     // Populate initial products if collection is empty
                     for (const product of initialProductsData) {
-                        await addDoc(productsCol, product);
+                        await addDoc(productsCol, { ...product, createdAt: Timestamp.now() });
                     }
                     console.log("Initial products populated.");
                 }
             } catch (e) {
                 console.error("Error getting or populating products:", e);
+                showAlert(`Error populating initial products: ${e.message}`, 'Initialization Error');
             }
         };
 
         const getCategories = async () => {
+            if (!db) { console.error("Firestore not initialized for getCategories."); return; }
             try {
-                const categoriesCol = collection(db, 'categories');
+                const categoriesCol = collection(db, `artifacts/${currentAppId}/public/data/categories`);
                 const categorySnapshot = await getDocs(categoriesCol);
                 if (categorySnapshot.empty) {
                     // Populate initial categories if collection is empty
                     for (const category of initialCategoriesData) {
-                        await addDoc(categoriesCol, category);
+                        await addDoc(categoriesCol, { ...category, createdAt: Timestamp.now() });
                     }
                     console.log("Initial categories populated.");
                 }
             } catch (e) {
                 console.error("Error getting or populating categories:", e);
+                showAlert(`Error populating initial categories: ${e.message}`, 'Initialization Error');
             }
         };
 
         const addUpdateProduct = async (productData) => {
+            if (!db) { console.error("Firestore not initialized for addUpdateProduct."); return; }
             try {
                 if (productData.id) {
                     // Update existing product
-                    const productRef = doc(db, 'products', productData.id);
+                    const productRef = doc(db, `artifacts/${currentAppId}/public/data/products`, productData.id);
                     await setDoc(productRef, productData, { merge: true });
                     console.log("Product updated:", productData.id);
-                    authStatusMessage.textContent = 'Product updated successfully!';
+                    showAlert('Product updated successfully!', 'Success');
                 } else {
                     // Add new product
-                    // Use addDoc for auto-ID, or setDoc with generateUniqueId() for custom ID
-                    await addDoc(collection(db, 'products'), { ...productData, createdAt: Timestamp.now() });
+                    await addDoc(collection(db, `artifacts/${currentAppId}/public/data/products`), { ...productData, createdAt: Timestamp.now() });
                     console.log("Product added:", productData.name);
-                    authStatusMessage.textContent = 'Product added successfully!';
+                    showAlert('Product added successfully!', 'Success');
                 }
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
                 resetProductForm();
             } catch (e) {
                 console.error("Error adding/updating product:", e);
-                authStatusMessage.textContent = `Error: ${e.message}`;
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert(`Error adding/updating product: ${e.message}`, 'Error');
             }
         };
 
         const deleteProduct = async (id) => {
-            if (!confirm('Are you sure you want to delete this product?')) {
+            if (!db) { console.error("Firestore not initialized for deleteProduct."); return; }
+            const confirmed = await showConfirm('Are you sure you want to delete this product?', 'Delete Product');
+            if (!confirmed) {
                 return;
             }
             try {
-                await deleteDoc(doc(db, 'products', id));
+                await deleteDoc(doc(db, `artifacts/${currentAppId}/public/data/products`, id));
                 console.log("Product deleted:", id);
-                authStatusMessage.textContent = 'Product deleted successfully!';
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
+                showAlert('Product deleted successfully!', 'Success');
             } catch (e) {
                 console.error("Error deleting product:", e);
-                authStatusMessage.textContent = `Error: ${e.message}`;
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert(`Error deleting product: ${e.message}`, 'Error');
             }
         };
 
         const addUpdateCategory = async (categoryData) => {
+            if (!db) { console.error("Firestore not initialized for addUpdateCategory."); return; }
             try {
                 if (categoryData.id) {
                     // Update existing category
-                    const categoryRef = doc(db, 'categories', categoryData.id);
+                    const categoryRef = doc(db, `artifacts/${currentAppId}/public/data/categories`, categoryData.id);
                     await setDoc(categoryRef, categoryData, { merge: true });
                     console.log("Category updated:", categoryData.id);
-                    authStatusMessage.textContent = 'Category updated successfully!';
+                    showAlert('Category updated successfully!', 'Success');
                 } else {
                     // Add new category
-                    await addDoc(collection(db, 'categories'), categoryData);
+                    await addDoc(collection(db, `artifacts/${currentAppId}/public/data/categories`), { ...categoryData, createdAt: Timestamp.now() });
                     console.log("Category added:", categoryData.name);
-                    authStatusMessage.textContent = 'Category added successfully!';
+                    showAlert('Category added successfully!', 'Success');
                 }
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
                 resetCategoryForm();
             } catch (e) {
                 console.error("Error adding/updating category:", e);
-                authStatusMessage.textContent = `Error: ${e.message}`;
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert(`Error adding/updating category: ${e.message}`, 'Error');
             }
         };
 
         const deleteCategory = async (id) => {
-            if (!confirm('Are you sure you want to delete this category? This will not delete products associated with it.')) {
+            if (!db) { console.error("Firestore not initialized for deleteCategory."); return; }
+            const confirmed = await showConfirm('Are you sure you want to delete this category? This will not delete products associated with it.', 'Delete Category');
+            if (!confirmed) {
                 return;
             }
             try {
-                await deleteDoc(doc(db, 'categories', id));
+                await deleteDoc(doc(db, `artifacts/${currentAppId}/public/data/categories`, id));
                 console.log("Category deleted:", id);
-                authStatusMessage.textContent = 'Category deleted successfully!';
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
+                showAlert('Category deleted successfully!', 'Success');
             } catch (e) {
                 console.error("Error deleting category:", e);
-                authStatusMessage.textContent = `Error: ${e.message}`;
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert(`Error deleting category: ${e.message}`, 'Error');
             }
         };
 
+        // User data in Firestore is private (per user)
         const getUserData = async (uid) => {
+            if (!db) { console.error("Firestore not initialized for getUserData."); return null; }
             try {
-                const userDocRef = doc(db, 'users', uid);
+                const userDocRef = doc(db, `artifacts/${currentAppId}/users/${uid}/userData/profile`);
                 const userDocSnap = await getDoc(userDocRef);
                 if (userDocSnap.exists()) {
                     return userDocSnap.data();
@@ -1173,8 +1223,9 @@
         };
 
         const setUserData = async (uid, data) => {
+            if (!db) { console.error("Firestore not initialized for setUserData."); return; }
             try {
-                const userDocRef = doc(db, 'users', uid);
+                const userDocRef = doc(db, `artifacts/${currentAppId}/users/${uid}/userData/profile`);
                 await setDoc(userDocRef, data, { merge: true });
                 console.log("User data set for", uid);
             } catch (error) {
@@ -1184,9 +1235,11 @@
 
         // NEW: Function to add login timestamp to user document
         const addLoginTimestamp = async (uid) => {
+            if (!db || !Timestamp) { console.error("Firestore or Timestamp not initialized for addLoginTimestamp."); return; }
             try {
-                const userRef = doc(db, 'users', uid);
-                const userDoc = await getDoc(userRef);
+                const userProfileRef = doc(db, `artifacts/${currentAppId}/users/${uid}/userData/profile`);
+                const userDoc = await getDoc(userProfileRef);
+
                 let currentTimestamps = [];
                 if (userDoc.exists() && userDoc.data().loginTimestamps) {
                     currentTimestamps = userDoc.data().loginTimestamps;
@@ -1199,7 +1252,7 @@
                     currentTimestamps = currentTimestamps.slice(-15); // Keep last 15
                 }
 
-                await updateDoc(userRef, {
+                await updateDoc(userProfileRef, {
                     loginTimestamps: currentTimestamps
                 });
                 console.log("Login timestamp added for user:", uid);
@@ -1246,13 +1299,119 @@
                 renderAdminCategories(); // Ensure categories are rendered for management
                 populateBrandAndPartTypeSelects(); // Ensure brand/part type dropdowns are populated
             } else {
-                alert('You must be an administrator to access this panel.');
+                showAlert('You must be an administrator to access this panel.', 'Access Denied');
                 showSection(storeView); // Redirect to store if not admin
                 currentView = 'store';
             }
         });
 
         loginLogoutBtn.addEventListener('click', async () => {
+            // Lazy load Firebase Auth and Firestore modules on first interaction
+            if (!auth) {
+                try {
+                    const firebaseAuthModule = await import("https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js");
+                    const firebaseFirestoreModule = await import("https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js");
+
+                    getAuth = firebaseAuthModule.getAuth;
+                    createUserWithEmailAndPassword = firebaseAuthModule.createUserWithEmailAndPassword;
+                    signInWithEmailAndPassword = firebaseAuthModule.signInWithEmailAndPassword;
+                    onAuthStateChanged = firebaseAuthModule.onAuthStateChanged;
+                    GoogleAuthProvider = firebaseAuthModule.GoogleAuthProvider;
+                    signInWithPopup = firebaseAuthModule.signInWithPopup;
+                    signOut = firebaseAuthModule.signOut;
+
+                    getFirestore = firebaseFirestoreModule.getFirestore;
+                    doc = firebaseFirestoreModule.doc;
+                    setDoc = firebaseFirestoreModule.setDoc;
+                    getDoc = firebaseFirestoreModule.getDoc;
+                    updateDoc = firebaseFirestoreModule.updateDoc;
+                    collection = firebaseFirestoreModule.collection;
+                    query = firebaseFirestoreModule.query;
+                    onSnapshot = firebaseFirestoreModule.onSnapshot;
+                    addDoc = firebaseFirestoreModule.addDoc;
+                    getDocs = firebaseFirestoreModule.getDocs;
+                    deleteDoc = firebaseFirestoreModule.deleteDoc;
+                    Timestamp = firebaseFirestoreModule.Timestamp;
+
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+
+                    // Set up the authentication state listener AFTER 'auth' is initialized
+                    // This listener is crucial for managing appUser state and loading data
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            // Fetch user's custom data from Firestore
+                            const userData = await getUserData(user.uid);
+                            appUser = {
+                                username: userData?.username || user.email,
+                                email: user.email,
+                                isAdmin: userData?.isAdmin || false,
+                                uid: user.uid,
+                                loginTimestamps: userData?.loginTimestamps || [] // Get timestamps
+                            };
+                            console.log("Firebase Auth State Changed: Logged in as", appUser.username);
+                            // Add current login timestamp only if it's a real Firebase user (not local kundan admin)
+                            if (user.uid !== 'local_kundan_admin') {
+                                 await addLoginTimestamp(user.uid);
+                            }
+
+                        } else {
+                            appUser = null;
+                            userId = null;
+                            console.log("Firebase Auth State Changed: Logged out or no user.");
+                        }
+                        isAuthReady = true; // Auth state has been resolved
+                        updateUIForAuth(); // Update UI based on new auth state
+                        setupProductsListener(); // Start listening for product updates
+                        setupCategoriesListener(); // Start listening for category updates
+                        // Initial fetch (if listeners don't immediately trigger)
+                        getProducts();
+                        getCategories();
+                        populateBrandAndPartTypeSelects(); // Populate dropdowns on init
+                    });
+
+                    // Initial sign-in with custom token if available (for Canvas environment)
+                    if (initialAuthToken) {
+                        try {
+                            await signInWithCustomToken(auth, initialAuthToken);
+                            console.log("Signed in with custom token from Canvas.");
+                        } catch (error) {
+                            console.error("Error signing in with custom token:", error);
+                            // Fallback to anonymous if custom token fails
+                            try {
+                                await signInAnonymously(auth);
+                                console.log("Signed in anonymously after custom token failure.");
+                            } catch (anonError) {
+                                console.error("Error signing in anonymously:", anonError);
+                                showAlert('Failed to initialize user session. Please try again.', 'Authentication Error');
+                            }
+                        }
+                    } else {
+                        // Sign in anonymously if no custom token and not already signed in
+                        if (!auth.currentUser) {
+                            try {
+                                await signInAnonymously(auth);
+                                console.log("Signed in anonymously (no custom token provided).");
+                            } catch (error) {
+                                console.error("Error signing in anonymously:", error);
+                                showAlert('Failed to initialize anonymous session. Please try again.', 'Authentication Error');
+                            }
+                        }
+                    }
+
+                } catch (error) {
+                    console.error("Error loading Firebase modules:", error);
+                    showAlert('Failed to load Firebase modules. Please check your network connection.', 'Critical Error');
+                    loginLogoutBtn.disabled = true; // Disable button on critical error
+                    showRegisterBtn.disabled = true;
+                    googleSignInBtn.disabled = true;
+                    return; // Stop further execution if modules can't be loaded
+                }
+            }
+
+
+            // Now handle login/logout after Firebase is ensured to be loaded
             if (appUser) {
                 // Logout logic
                 try {
@@ -1260,20 +1419,13 @@
                     appUser = null;
                     userId = null;
                     console.log('User logged out.');
-                    authStatusMessage.textContent = 'Logged out successfully.';
-                    authStatusMessage.classList.add('bg-green-500');
-                    authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                    authStatusMessage.style.display = 'block';
-                    setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
+                    showAlert('Logged out successfully.', 'Success');
                     updateUIForAuth();
                     showSection(storeView); // Go to store view on logout
                     currentView = 'store';
                 } catch (error) {
                     console.error("Error logging out:", error);
-                    authStatusMessage.textContent = `Error logging out: ${error.message}`;
-                    authStatusMessage.classList.add('bg-red-500');
-                    authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                    authStatusMessage.style.display = 'block';
+                    showAlert(`Error logging out: ${error.message}`, 'Logout Error');
                 }
             } else {
                 // Show login modal
@@ -1314,7 +1466,7 @@
                     email: 'kundan',
                     isAdmin: true,
                     uid: 'local_kundan_admin', // A unique ID for the local session
-                    loginTimestamps: [Timestamp.now()] // Simulate a timestamp for local admin
+                    loginTimestamps: [Timestamp ? Timestamp.now() : { toDate: () => new Date() }] // Simulate a timestamp for local admin
                 };
                 userId = 'local_kundan_admin';
                 console.log("Logged in as local admin (kundan/kundan). This is a client-side only bypass.");
@@ -1326,9 +1478,15 @@
                 renderAdminProducts();
                 renderAdminCategories();
                 populateBrandAndPartTypeSelects();
+                showAlert('Logged in as local admin.', 'Admin Login');
                 return; // Stop further processing
             }
             // --- END LOCAL ADMIN BYPASS ---
+
+            if (!auth || !signInWithEmailAndPassword || !Timestamp) {
+                showAlert('Firebase Authentication not yet loaded. Please try again.', 'Error');
+                return;
+            }
 
             try {
                 const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -1350,11 +1508,7 @@
                 loginModal.classList.remove('open');
                 loginForm.reset();
                 updateUIForAuth();
-                authStatusMessage.textContent = `Logged in as ${appUser.username}.`;
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
+                showAlert(`Logged in as ${appUser.username}.`, 'Login Success');
             } catch (error) {
                 console.error("Login failed:", error);
                 let errorMessage = "Login failed. Please check your email and password.";
@@ -1363,24 +1517,26 @@
                 } else if (error.code === 'auth/invalid-email') {
                     errorMessage = "Invalid email format.";
                 }
-                authStatusMessage.textContent = `Error: ${errorMessage}`;
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert(`Error: ${errorMessage}`, 'Login Failed');
             }
         });
 
         googleSignInBtn.addEventListener('click', async () => {
+            if (!auth || !GoogleAuthProvider || !signInWithPopup || !Timestamp) {
+                showAlert('Firebase Authentication not yet loaded. Please try again.', 'Error');
+                return;
+            }
+
             const provider = new GoogleAuthProvider();
             try {
                 const result = await signInWithPopup(auth, provider);
                 const user = result.user; // The signed-in user info.
 
                 // Check if user exists in Firestore 'users' collection
-                const userDocSnap = await getDoc(doc(db, 'users', user.uid));
+                const userDocSnap = await getDoc(doc(db, `artifacts/${currentAppId}/users/${user.uid}/userData/profile`));
                 if (!userDocSnap.exists()) {
                     // Create new user document if they don't exist
-                    await setDoc(doc(db, 'users', user.uid), {
+                    await setDoc(doc(db, `artifacts/${currentAppId}/users/${user.uid}/userData/profile`), {
                         username: user.displayName || user.email,
                         email: user.email,
                         isAdmin: false, // Default to non-admin for new Google sign-ins
@@ -1406,11 +1562,7 @@
                 loginModal.classList.remove('open');
                 loginForm.reset();
                 updateUIForAuth();
-                authStatusMessage.textContent = `Logged in as ${appUser.username} via Google.`;
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
+                showAlert(`Logged in as ${appUser.username} via Google.`, 'Login Success');
 
             } catch (error) {
                 console.error("Google Sign-In failed:", error);
@@ -1420,10 +1572,7 @@
                 } else if (error.code === 'auth/cancelled-popup-request') {
                     errorMessage = "Sign-in cancelled.";
                 }
-                authStatusMessage.textContent = `Error: ${errorMessage}`;
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert(`Error: ${errorMessage}`, 'Sign-In Failed');
             }
         });
 
@@ -1436,7 +1585,11 @@
             const confirmPassword = confirmPasswordRegisterInput.value.trim();
 
             if (password !== confirmPassword) {
-                alert("Passwords do not match!");
+                showAlert("Passwords do not match!", "Registration Error");
+                return;
+            }
+            if (!auth || !createUserWithEmailAndPassword || !Timestamp) {
+                showAlert('Firebase Authentication not yet loaded. Please try again.', 'Error');
                 return;
             }
 
@@ -1466,11 +1619,7 @@
                 registerModal.classList.remove('open');
                 registerForm.reset();
                 updateUIForAuth();
-                authStatusMessage.textContent = `Registered and logged in as ${appUser.username}.`;
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 3000);
+                showAlert(`Registered and logged in as ${appUser.username}.`, 'Registration Success');
             } catch (error) {
                 console.error("Registration failed:", error);
                 let errorMessage = "Registration failed.";
@@ -1481,10 +1630,7 @@
                 } else if (error.code === 'auth/invalid-email') {
                     errorMessage = "Invalid email address.";
                 }
-                authStatusMessage.textContent = `Error: ${errorMessage}`;
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-green-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
+                showAlert(`Error: ${errorMessage}`, 'Registration Failed');
             }
         });
 
@@ -1501,7 +1647,7 @@
             const partType = productPartTypeSelect.value; // NEW
 
             if (!name || !description || isNaN(price) || price <= 0 || !category || !brand || !partType) {
-                alert('Please fill in all required product fields (Name, Description, Price, Category, Brand, Part Type) and ensure price is valid.');
+                showAlert('Please fill in all required product fields (Name, Description, Price, Category, Brand, Part Type) and ensure price is valid.', 'Validation Error');
                 return;
             }
 
@@ -1554,7 +1700,7 @@
             const name = categoryNameInput.value.trim();
 
             if (!name) {
-                alert('Please enter a category name.');
+                showAlert('Please enter a category name.', 'Validation Error');
                 return;
             }
 
@@ -1602,11 +1748,7 @@
                     cart.push({ id: productId, quantity: 1 });
                 }
                 saveCart();
-                authStatusMessage.textContent = 'Item added to cart!';
-                authStatusMessage.classList.add('bg-green-500');
-                authStatusMessage.classList.remove('bg-red-500', 'bg-gray-700');
-                authStatusMessage.style.display = 'block';
-                setTimeout(() => { authStatusMessage.style.display = 'none'; }, 2000);
+                showAlert('Item added to cart!', 'Cart Update');
             }
         });
 
@@ -1675,204 +1817,57 @@
             filterAndSortProducts();
         });
 
+        // Password Strength Checker
+        document.getElementById('passwordRegister').addEventListener('input', (e) => {
+            const val = e.target.value;
+            let strength = "Weak";
+            if (val.length >= 8 && /[A-Z]/.test(val) && /\d/.test(val)) strength = "Strong";
+            else if (val.length >= 6) strength = "Moderate";
+            document.getElementById('passwordStrength')?.remove(); // Remove existing message
+            const msg = document.createElement('small');
+            msg.id = 'passwordStrength';
+            msg.className = 'text-sm text-gray-500 mt-1 block'; // Added mt-1 block for spacing
+            msg.textContent = "Password strength: " + strength;
+            e.target.parentNode.appendChild(msg);
+        });
 
-        // --- Firebase Auth State Listener ---
+
+        // --- Initial App Setup ---
         const initializeAppAndFirebase = async () => {
             try {
                 // Initialize Firebase app only once
                 if (!app) {
-                    app = initializeApp(firebaseConfig, appId);
-                    db = getFirestore(app);
-                    auth = getAuth(app);
+                    // Import only initializeApp initially for the core app
+                    const firebaseAppModule = await import("https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js");
+                    initializeApp = firebaseAppModule.initializeApp;
+                    app = initializeApp(firebaseConfig); // Initialize the core app
                 }
-
-                // Check if running in a Google Canvas environment for authentication
-                if (typeof __is_running_in_google_canvas !== 'undefined' && __is_running_in_google_canvas) {
-                    if (initialAuthToken) {
-                        await signInWithCustomToken(auth, initialAuthToken);
-                        console.log("Signed in with custom token from Canvas.");
-                    } else {
-                        try {
-                            await signInAnonymously(auth);
-                            console.log("Signed in anonymously in Canvas environment.");
-                        } catch (error) {
-                            console.error("Error signing in anonymously:", error);
-                        }
-                    }
-                }
-
-                // Listen for authentication state changes
-                onAuthStateChanged(auth, async (user) => {
-                    if (user) {
-                        userId = user.uid;
-                        // Fetch user's custom data from Firestore
-                        const userData = await getUserData(user.uid);
-                        appUser = {
-                            username: userData?.username || user.email,
-                            email: user.email,
-                            isAdmin: userData?.isAdmin || false,
-                            uid: user.uid,
-                            loginTimestamps: userData?.loginTimestamps || [] // Get timestamps
-                        };
-                        console.log("Firebase Auth State Changed: Logged in as", appUser.username);
-                        // Add current login timestamp only if it's a real Firebase user (not local kundan admin)
-                        if (user.uid !== 'local_kundan_admin') {
-                             await addLoginTimestamp(user.uid);
-                        }
-
-                    } else {
-                        appUser = null;
-                        userId = null;
-                        console.log("Firebase Auth State Changed: Logged out or no user.");
-                    }
-                    isAuthReady = true;
-                    updateUIForAuth();
-                    setupProductsListener(); // Listen for product updates
-                    setupCategoriesListener(); // Listen for category updates
-                    // Initial fetch (if listeners don't immediately trigger)
-                    getProducts();
-                    getCategories();
-                    populateBrandAndPartTypeSelects(); // Populate dropdowns on init
-                });
 
                 loadCart();
                 loadCurrency();
                 updateCartCount();
-                updateUIForAuth(); // Initial UI update
+                updateUIForAuth(); // Initial UI update (will show "Initializing authentication...")
+
+                // Note: The actual Firebase Auth and Firestore modules (getAuth, getFirestore, etc.)
+                // are now loaded dynamically on the first interaction with login/logout button.
+                // The onAuthStateChanged listener is also set up at that point to ensure 'auth' is ready.
+
+                // Pre-populate dropdowns
+                populateBrandAndPartTypeSelects();
+                // Categories will be populated after setupCategoriesListener runs once auth is ready.
 
             } catch (error) {
                 console.error("Failed to initialize Firebase or application:", error);
-                authStatusMessage.textContent = 'Error: Firebase failed to initialize. Check console.';
-                authStatusMessage.classList.add('bg-red-500');
-                authStatusMessage.classList.remove('bg-gray-700');
+                showAlert('Error: Core Firebase failed to initialize. Check console.', 'Critical Error');
                 loginLogoutBtn.disabled = true;
                 showRegisterBtn.disabled = true;
-                googleSignInBtn.disabled = true; // Disable Google Sign-In on init error
+                googleSignInBtn.disabled = true;
             }
         };
 
+        // Initialize the app when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', initializeAppAndFirebase);
 
     </script>
-
-<script type="module">
-  import {
-    initializeApp
-  } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-app.js";
-  import {
-    getAuth,
-    createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
-    signOut
-  } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-auth.js";
-  import {
-    getFirestore,
-    doc,
-    setDoc,
-    getDoc,
-    updateDoc,
-    Timestamp
-  } from "https://www.gstatic.com/firebasejs/11.9.0/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyBFKQa1_X2K3fSp1o0Co5uy9neWK9GGceQ",
-    authDomain: "mobile-doctor-app.firebaseapp.com",
-    projectId: "mobile-doctor-app",
-    storageBucket: "mobile-doctor-app.appspot.com",
-    messagingSenderId: "831443700901",
-    appId: "1:831443700901:web:5848c1e848e4503b28514c"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-
-  const registerForm = document.getElementById('registerForm');
-  const loginForm = document.getElementById('loginForm');
-  const loginModal = document.getElementById('loginModal');
-  const registerModal = document.getElementById('registerModal');
-
-  // Register Logic
-  registerForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const username = document.getElementById('usernameRegister').value.trim();
-    const email = document.getElementById('emailRegister').value.trim();
-    const password = document.getElementById('passwordRegister').value.trim();
-    const confirmPassword = document.getElementById('confirmPasswordRegister').value.trim();
-
-    if (password !== confirmPassword) {
-      alert("Passwords do not match!");
-      return;
-    }
-
-    try {
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCred.user.uid;
-
-      await setDoc(doc(db, 'users', uid), {
-        username,
-        email,
-        isAdmin: false,
-        loginTimestamps: [Timestamp.now()]
-      });
-
-      alert("Registered successfully!");
-      registerModal.classList.remove('open');
-      registerForm.reset();
-    } catch (error) {
-      alert("Registration error: " + error.message);
-    }
-  });
-
-  // Login Logic
-  loginForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('usernameLogin').value.trim();
-    const password = document.getElementById('passwordLogin').value.trim();
-
-    if (email === 'kundan' && password === 'kundan') {
-      alert('Logged in as admin');
-      loginModal.classList.remove('open');
-      return;
-    }
-
-    try {
-      const userCred = await signInWithEmailAndPassword(auth, email, password);
-      const uid = userCred.user.uid;
-
-      const userDoc = await getDoc(doc(db, 'users', uid));
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        await updateDoc(doc(db, 'users', uid), {
-          loginTimestamps: [...(userData.loginTimestamps || []), Timestamp.now()]
-        });
-        alert("Login successful!");
-        loginModal.classList.remove('open');
-        loginForm.reset();
-      }
-    } catch (error) {
-      alert("Login error: " + error.message);
-    }
-  });
-
-  // Enable Register Button
-  document.getElementById('showRegisterBtn').disabled = false;
-
-  // Password Strength Checker
-  document.getElementById('passwordRegister').addEventListener('input', (e) => {
-    const val = e.target.value;
-    let strength = "Weak";
-    if (val.length >= 8 && /[A-Z]/.test(val) && /\d/.test(val)) strength = "Strong";
-    else if (val.length >= 6) strength = "Moderate";
-    document.getElementById('passwordStrength')?.remove();
-    const msg = document.createElement('small');
-    msg.id = 'passwordStrength';
-    msg.className = 'text-sm text-gray-500';
-    msg.textContent = "Password strength: " + strength;
-    e.target.parentNode.appendChild(msg);
-  });
-
-</script>
-
 </body>
 </html>
